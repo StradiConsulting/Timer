@@ -373,22 +373,14 @@ async function makeFirebaseApi(onAuth){
     async signOut(){await A.signOut(auth);},
     async createUser(name,email,role){
       try{
-        // Créer le profil en attente dans Firestore
-        const pendingId='pending_'+Date.now();
+        // Vérifier si email déjà existant dans Firestore
+        const existing=await F.getDocs(F.query(F.collection(db,'users'),F.where('email','==',email)));
+        if(!existing.empty)return{error:"Un compte existe déjà avec cet e-mail."};
+        // Créer le profil en attente (sera lié au compte Auth à la première connexion)
+        const pendingId='pending_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
         await F.setDoc(F.doc(db,'users',pendingId),{name,email,role,active:true,pending:true,createdAt:Date.now()});
-        // Envoyer lien de connexion passwordless
-        const actionSettings={url:window.location.origin+window.location.pathname,handleCodeInApp:true};
-        await A.sendSignInLinkToEmail(auth,email,actionSettings);
-        return {};
-      }catch(e){
-        // Si lien passwordless non configuré : créer juste le profil Firestore
-        if(e.code&&(e.code.includes('unauthorized')||e.code.includes('invalid-continue'))){
-          const pendingId='pending_'+Date.now();
-          await F.setDoc(F.doc(db,'users',pendingId),{name,email,role,active:true,pending:true,createdAt:Date.now()});
-          return {warning:true};
-        }
-        return{error:fbErr(e)};
-      }
+        return {warning:true};
+      }catch(e){return{error:fbErr(e)};}
     },
     async add(coll,data){await F.addDoc(F.collection(db,coll),data);},
     async update(coll,id,patch){await F.updateDoc(F.doc(db,coll,id),patch);},
@@ -898,7 +890,7 @@ async function saveUser(id){
       if(r&&r.error){toast('Erreur : '+r.error);return;}
       if(r&&r.warning){
         closeModal();
-        toast('Profil créé. Créez maintenant le compte dans Firebase Console (Authentication → Users) avec cet e-mail.');
+        toast('Profil créé ✓ — Allez dans Firebase Console → Authentication → Add user pour finaliser le compte.');
         return;
       }
     } else {
