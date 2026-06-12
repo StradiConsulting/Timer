@@ -371,18 +371,26 @@ async function makeFirebaseApi(onAuth){
         await F.setDoc(F.doc(db,'users',cred.user.uid),{name,email,role,active:true,createdAt:Date.now()});
         return {};}catch(e){return {error:fbErr(e)};}},
     async signOut(){await A.signOut(auth);},
-    async createUser(name,email,role){
+    async createUser(name,email,role,pwd){
       try{
-        // Vérifier si email déjà existant dans Firestore
+        // Vérifier doublons email et nom
         const existingEmail=await F.getDocs(F.query(F.collection(db,'users'),F.where('email','==',email)));
         if(!existingEmail.empty)return{error:"Un compte existe déjà avec cet e-mail."};
-        // Vérifier si nom identique
         const existingName=await F.getDocs(F.query(F.collection(db,'users'),F.where('name','==',name)));
         if(!existingName.empty)return{error:"Un utilisateur avec ce nom existe déjà."};
-        // Créer le profil en attente (sera lié au compte Auth à la première connexion)
-        const pendingId='pending_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
-        await F.setDoc(F.doc(db,'users',pendingId),{name,email,role,active:true,pending:true,createdAt:Date.now()});
-        return {warning:true};
+        if(!pwd||pwd.length<6)return{error:"Le mot de passe doit faire au moins 6 caractères."};
+        // Créer le compte Firebase Auth via REST API (sans changer la session admin)
+        const apiKey=firebaseConfig.apiKey;
+        const res=await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`,{
+          method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({email,password:pwd,displayName:name,returnSecureToken:false})
+        });
+        const data=await res.json();
+        if(data.error)return{error:data.error.message||'Erreur création compte'};
+        const uid=data.localId;
+        // Créer le profil Firestore avec le vrai UID
+        await F.setDoc(F.doc(db,'users',uid),{name,email,role,active:true,createdAt:Date.now()});
+        return {};
       }catch(e){return{error:fbErr(e)};}
     },
     async add(coll,data){await F.addDoc(F.collection(db,coll),data);},
@@ -870,7 +878,9 @@ function userModal(id){
   openModal(`<h2>${id?"Modifier l'utilisateur":'Nouvel utilisateur'}</h2>
     <div class="field"><label>Nom</label><input id="uName" value="${esc(u.name)}"></div>
     <div class="field"><label>E-mail</label><input id="uEmail" value="${esc(u.email)}" ${id&&cloud?'disabled':''}></div>
-    ${(!id&&!cloud)?`<div class="field"><label>Mot de passe</label><input id="uPwd" type="text" placeholder="Mot de passe initial"></div>`:''}
+    ${!id?`<div class="field"><label>Mot de passe temporaire</label>
+      <input id="uPwd" type="text" placeholder="Ex. Stradi2024!" autocomplete="off">
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">À communiquer à la personne. Elle pourra le modifier après connexion.</div></div>`:''}
     <div class="field"><label>Rôle</label><select id="uRole">
       <option value="contributeur" ${u.role==='contributeur'?'selected':''}>Contributeur</option>
       <option value="chef" ${u.role==='chef'?'selected':''}>Chef de projet</option>
@@ -889,13 +899,9 @@ async function saveUser(id){
     const email=$('#uEmail').value.trim();
     if(!email){toast('E-mail requis.');return;}
     if(cloud){
-      const r=await api.createUser(name,email,role);
+      const pwd=$('#uPwd')?$('#uPwd').value.trim():'';
+      const r=await api.createUser(name,email,role,pwd);
       if(r&&r.error){toast('Erreur : '+r.error);return;}
-      if(r&&r.warning){
-        closeModal();
-        toast('Profil créé ✓ — Allez dans Firebase Console → Authentication → Add user pour finaliser le compte.');
-        return;
-      }
     } else {
       const pwd=$('#uPwd').value||'stradi';
       await api.add('users',{name,email,role,active:true,pwd:hash(pwd)});
