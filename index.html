@@ -455,7 +455,7 @@ const ICONS={
   out:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>'
 };
 function renderNav(){
-  let h=`<button data-action="go" data-view="timer" class="${state.view==='timer'?'active':''}">${ICONS.timer} Pointage</button>
+  let h=`<button data-action="go" data-view="timer" class="${state.view==='timer'?'active':''}">${ICONS.timer} Chrono</button>
     <button data-action="go" data-view="entries" class="${state.view==='entries'?'active':''}">${ICONS.list} Pointages</button>
     <button data-action="go" data-view="reports" class="${state.view==='reports'?'active':''}">${ICONS.chart} Rapports</button>`;
   if(isAdmin()) h+=`<div class="sect">Administration</div>
@@ -493,8 +493,8 @@ function renderTimer(){
   const tasks=DB.tasks.filter(x=>x.projectId===selProj);
   const selTask=t?t.taskId:(state._tTask||'');
   $('#view').innerHTML=`${modeBanner()}
-  <div class="page-head"><div><h1>Pointage</h1>
-    <div class="sub">${running?(isPaused?'Suivi en pause.':'Un suivi est en cours.'):'Sélectionnez un client, un projet et une tâche, puis démarrez le minuteur.'}</div></div></div>
+  <div class="page-head"><div><h1>Chrono</h1>
+    <div class="sub">${running?(isPaused?'Suivi en pause.':'Un suivi est en cours.'):'Sélectionnez un client, un projet et une tâche, puis démarrez le chrono.'}</div></div></div>
   <div class="panel timer-card">
     <div class="timer-display">
       <div class="clock ${running?(isPaused?'paused':'run'):''}" id="clock">00:00:00</div>
