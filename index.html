@@ -871,13 +871,14 @@ async function saveTask(id){const name=$('#kName').value.trim(),projectId=$('#kP
 function delTask(id){confirmModal('Supprimer cette tâche ?','Les pointages associés sont conservés.',async()=>{await api.remove('tasks',id);closeModal();});}
 function userModal(id){
   const cloud=api&&api.mode==='firebase';
-  const u=id?DB.users.find(x=>x.id===id):{name:'',email:'',role:'user',active:true};
+  const u=id?DB.users.find(x=>x.id===id):{name:'',email:'',role:'contributeur',active:true};
   openModal(`<h2>${id?"Modifier l'utilisateur":'Nouvel utilisateur'}</h2>
     <div class="field"><label>Nom</label><input id="uName" value="${esc(u.name)}"></div>
     <div class="field"><label>E-mail</label><input id="uEmail" value="${esc(u.email)}" ${id&&cloud?'disabled':''}></div>
     ${(!id&&!cloud)?`<div class="field"><label>Mot de passe</label><input id="uPwd" type="text" placeholder="Mot de passe initial"></div>`:''}
     <div class="field"><label>Rôle</label><select id="uRole">
-      <option value="user" ${u.role==='user'?'selected':''}>Utilisateur</option>
+      <option value="contributeur" ${u.role==='contributeur'?'selected':''}>Contributeur</option>
+      <option value="chef" ${u.role==='chef'?'selected':''}>Chef de projet</option>
       <option value="admin" ${u.role==='admin'?'selected':''}>Administrateur</option></select></div>
     <div class="field"><label><input type="checkbox" id="uActive" ${u.active?'checked':''}> Actif</label></div>
     <div class="modal-foot"><button class="btn btn-ghost" data-action="closeModal">Annuler</button>
