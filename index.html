@@ -169,7 +169,7 @@ tbody tr:last-child td{border-bottom:none}tbody tr:hover{background:var(--panel-
   .grid[style*="repeat(3"],.grid[style*="1fr 1fr"]{grid-template-columns:1fr!important}
   .menu-toggle{display:inline-flex!important}
 }
-.menu-toggle{display:none;position:fixed;top:14px;left:14px;z-index:45;background:var(--brand);color:#fff;width:42px;height:42px;border-radius:11px;align-items:center;justify-content:center;box-shadow:var(--shadow)}
+.menu-toggle{display:none;position:fixed;top:14px;right:14px;z-index:45;background:var(--brand);color:#fff;width:42px;height:42px;border-radius:11px;align-items:center;justify-content:center;box-shadow:var(--shadow)}
 </style>
 </head>
 <body>
@@ -374,8 +374,11 @@ async function makeFirebaseApi(onAuth){
     async createUser(name,email,role){
       try{
         // Vérifier si email déjà existant dans Firestore
-        const existing=await F.getDocs(F.query(F.collection(db,'users'),F.where('email','==',email)));
-        if(!existing.empty)return{error:"Un compte existe déjà avec cet e-mail."};
+        const existingEmail=await F.getDocs(F.query(F.collection(db,'users'),F.where('email','==',email)));
+        if(!existingEmail.empty)return{error:"Un compte existe déjà avec cet e-mail."};
+        // Vérifier si nom identique
+        const existingName=await F.getDocs(F.query(F.collection(db,'users'),F.where('name','==',name)));
+        if(!existingName.empty)return{error:"Un utilisateur avec ce nom existe déjà."};
         // Créer le profil en attente (sera lié au compte Auth à la première connexion)
         const pendingId='pending_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
         await F.setDoc(F.doc(db,'users',pendingId),{name,email,role,active:true,pending:true,createdAt:Date.now()});
