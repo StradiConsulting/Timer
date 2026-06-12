@@ -129,7 +129,7 @@ tbody tr:last-child td{border-bottom:none}tbody tr:hover{background:var(--panel-
 .icon-btn.danger:hover{background:var(--accent-tint);color:var(--danger)}
 .empty{text-align:center;color:var(--faint);padding:40px 0;font-size:14px}
 .badge{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:20px;font-weight:700}
-.badge.admin{background:var(--brand);color:#fff}.badge.user{background:var(--accent-tint);color:var(--accent-600)}
+.badge.admin{background:var(--brand);color:#fff}.badge.chef{background:#E8F4E8;color:#3E6B47}.badge.contributeur{background:#F0EAF8;color:#6B3E9E}.badge.user{background:var(--accent-tint);color:var(--accent-600)}
 
 .bars{display:flex;flex-direction:column;gap:13px}
 .bar-row{display:grid;grid-template-columns:160px 1fr 78px;align-items:center;gap:12px}
@@ -251,6 +251,9 @@ function hash(s){let h=5381;for(const c of s)h=((h<<5)+h+c.charCodeAt(0))>>>0;re
 
 const me=()=>DB.users.find(u=>u.id===session.userId)||{name:'',role:'user'};
 const isAdmin=()=>me().role==='admin';
+const isChef=()=>me().role==='admin'||me().role==='chef';
+const roleLabel=r=>({admin:'Administrateur',chef:'Chef de projet',contributeur:'Contributeur',user:'Utilisateur'}[r]||r);
+const roleBadge=r=>({admin:'admin',chef:'chef',contributeur:'contributeur',user:'user'}[r]||'user');
 const userName=id=>(DB.users.find(u=>u.id===id)||{}).name||'—';
 const clientName=id=>(DB.clients.find(c=>c.id===id)||{}).name||'—';
 const projectName=id=>(DB.projects.find(p=>p.id===id)||{}).name||'—';
@@ -319,7 +322,12 @@ function makeLocalApi(){
     async update(coll,id,patch){const r=DB[coll].find(x=>x.id===id);if(r)Object.assign(r,patch);await persist();rerender();},
     async remove(coll,id){DB[coll]=DB[coll].filter(x=>x.id!==id);await persist();rerender();},
     async setTimer(u,data){DB.timers[u]=data;await persist();rerender();},
-    async clearTimer(u){delete DB.timers[u];await persist();rerender();}
+    async clearTimer(u){delete DB.timers[u];await persist();rerender();},
+    async createUser(name,email,role){
+      if(DB.users.some(x=>x.email.toLowerCase()===email.toLowerCase()))return{error:"Un compte existe déjà avec cet e-mail."};
+      await this.add('users',{name,email,role,active:true,pwd:hash('stradi')});
+      return {};
+    }
   };
 }
 
@@ -363,6 +371,25 @@ async function makeFirebaseApi(onAuth){
         await F.setDoc(F.doc(db,'users',cred.user.uid),{name,email,role,active:true,createdAt:Date.now()});
         return {};}catch(e){return {error:fbErr(e)};}},
     async signOut(){await A.signOut(auth);},
+    async createUser(name,email,role){
+      try{
+        // Utiliser REST API Firebase pour créer sans changer la session admin
+        const apiKey=firebaseConfig.apiKey;
+        const tmpPwd='Stradi'+Math.random().toString(36).slice(2,8)+'!1';
+        const res=await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`,{
+          method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({email,password:tmpPwd,displayName:name,returnSecureToken:false})
+        });
+        const data=await res.json();
+        if(data.error)return{error:data.error.message||'Erreur création compte'};
+        const uid=data.localId;
+        // Créer le doc Firestore
+        await F.setDoc(F.doc(db,'users',uid),{name,email,role,active:true,createdAt:Date.now()});
+        // Envoyer email de définition du mot de passe
+        await A.sendPasswordResetEmail(auth,email);
+        return {};
+      }catch(e){return{error:fbErr(e)};}
+    },
     async add(coll,data){await F.addDoc(F.collection(db,coll),data);},
     async update(coll,id,patch){await F.updateDoc(F.doc(db,coll,id),patch);},
     async remove(coll,id){await F.deleteDoc(F.doc(db,coll,id));},
@@ -443,7 +470,7 @@ function renderNav(){
 function renderWho(){
   const u=me();
   $('#who').innerHTML=`<span class="av" style="background:${avColor(session.userId)}">${initials(u.name)}</span>
-    <span><span class="nm">${esc(u.name)}</span><br><span class="rl">${u.role==='admin'?'Administrateur':'Utilisateur'}</span></span>
+    <span><span class="nm">${esc(u.name)}</span><br><span class="rl">${roleLabel(u.role)}</span></span>
     <button class="out" data-action="logout" title="Se déconnecter">${ICONS.out}</button>`;
 }
 function modeBanner(){
@@ -790,9 +817,7 @@ function adminTasks(){
 }
 function adminUsers(){
   const cloud=api&&api.mode==='firebase';
-  const top=cloud
-    ? `<div class="demo-hint" style="margin-bottom:14px">Les comptes sont créés par l'administrateur dans la console Firebase (<strong>Authentication → Users</strong> : e-mail + mot de passe). Le profil de la personne apparaît ici à sa première connexion ; vous y ajustez son <strong>rôle</strong> et son <strong>activation</strong>.</div>`
-    : `<div style="margin-bottom:14px"><button class="btn btn-primary" data-action="userModal">+ Nouvel utilisateur</button></div>`;
+  const top=`<div style="margin-bottom:14px"><button class="btn btn-primary" data-action="userModal">+ Nouvel utilisateur</button></div>`;
   return `${top}<div class="panel" style="overflow:hidden"><table><thead><tr><th>Nom</th><th>E-mail</th><th>Rôle</th><th>Statut</th><th></th></tr></thead><tbody>
   ${DB.users.map(u=>`<tr><td><span class="dot" style="background:${avColor(u.id)}"></span><strong>${esc(u.name)}</strong></td>
     <td style="color:var(--muted)">${esc(u.email)}</td>
@@ -860,11 +885,21 @@ function userModal(id){
 async function saveUser(id){
   const cloud=api&&api.mode==='firebase';
   const name=$('#uName').value.trim();if(!name){toast('Nom requis.');return;}
-  if(id){await api.update('users',id,{name,role:$('#uRole').value,active:$('#uActive').checked});}
-  else{
-    if(cloud){toast("En mode Firebase, l'utilisateur crée son compte lui-même.");return;}
-    const email=$('#uEmail').value.trim();const pwd=$('#uPwd').value||'stradi';
-    await api.add('users',{name,email,role:$('#uRole').value,active:$('#uActive').checked,pwd:hash(pwd)});
+  const role=$('#uRole').value;
+  const active=$('#uActive').checked;
+  if(id){
+    await api.update('users',id,{name,role,active});
+  } else {
+    const email=$('#uEmail').value.trim();
+    if(!email){toast('E-mail requis.');return;}
+    if(cloud){
+      // Création Firebase : mot de passe temporaire + email de réinitialisation
+      const r=await api.createUser(name,email,role);
+      if(r&&r.error){toast('Erreur : '+r.error);return;}
+    } else {
+      const pwd=$('#uPwd').value||'stradi';
+      await api.add('users',{name,email,role,active:true,pwd:hash(pwd)});
+    }
   }
   closeModal();renderWho();toast('Utilisateur enregistré.');
 }
